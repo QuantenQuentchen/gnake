@@ -310,6 +310,13 @@ func (v Vec2I) SetZeroComponents(value int32) Vec2I {
 	return Vec2I{x, y}
 }
 
+func ExponentialDecay(x float64) float64 {
+	a := 100.0 // Initial value
+	b := 0.95  // Base value for a slow decay, closer to 1 makes the decrement smaller
+
+	return a * math.Pow(b, x)
+}
+
 type Snake struct {
 	Body             []Vec2I
 	currentThickness float32
@@ -548,6 +555,9 @@ func main() {
 					case sdl.K_ESCAPE:
 						pause = false
 						death = true
+					case sdl.K_r:
+						foodNum++
+						Snake.Grow()
 					case sdl.K_p:
 						pause = true
 					}
@@ -560,14 +570,27 @@ func main() {
 		renderer.SetDrawColor(0, 0, 0, 255)
 		renderer.Clear()
 
+		// Define constants for the root function
+		const a float64 = 0
+		const b float64 = 1
+
+		// Inside your game loop
+		// Calculate the dynamic speed based on the snake's size
+		dynamicSpeed := 49 - math.Pow(float64(foodNum), 1/3)*10
+
+		// Ensure dynamicSpeed does not fall below a minimum threshold
+		if dynamicSpeed < 11 {
+			dynamicSpeed = 11
+		}
+
 		// Dynamic drawing operations here
 		// For example, drawing a line that changes position over time
 
-		if count == int(math.Max(float64(61-Snake.getSize()*3), 0)) {
+		if count == int(dynamicSpeed) {
 			count = 0
 			Snake.Move(moveDir)
 			if Snake.CollidesWithSelf() {
-				running = false
+				death = true
 			}
 			if Snake.CollidesWithGlobSpace(food) {
 				Snake.Grow()
