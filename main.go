@@ -5,6 +5,7 @@ import (
 	"math"
 	"math/rand"
 	"os"
+	"runtime"
 	"strconv"
 	"time"
 	"unsafe"
@@ -416,18 +417,36 @@ func numberOfDigits(num int) int {
 	return int(math.Log10(float64(num))) + 1
 }
 
+func trySDLInit() error {
+	if err := sdl.Init(sdl.INIT_EVERYTHING); err != nil {
+		return err
+	}
+	return nil
+}
+
 func main() {
 
 	rand.Seed(time.Now().UnixNano())
 
 	os.Setenv("SDL_VIDEODRIVER", "wayland")
+	if err := trySDLInit(); err != nil {
+		// Fallback to X11 for Linux or Windows for Windows OS
+		if runtime.GOOS == "linux" {
+			os.Setenv("SDL_VIDEODRIVER", "x11")
+		} else if runtime.GOOS == "windows" {
+			os.Setenv("SDL_VIDEODRIVER", "windows")
+		}
+		if err := trySDLInit(); err != nil {
+			panic(err) // Handle error if both attempts fail
+		}
+	}
 
 	if err := sdl.Init(sdl.INIT_EVERYTHING); err != nil {
 		panic(err)
 	}
 	defer sdl.Quit()
 
-	window, err := sdl.CreateWindow("Pixel Window", sdl.WINDOWPOS_UNDEFINED, sdl.WINDOWPOS_UNDEFINED, windowWidth, windowHeight, sdl.WINDOW_SHOWN)
+	window, err := sdl.CreateWindow("Snek", sdl.WINDOWPOS_UNDEFINED, sdl.WINDOWPOS_UNDEFINED, windowWidth, windowHeight, sdl.WINDOW_SHOWN)
 	if err != nil {
 		panic(err)
 	}
