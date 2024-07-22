@@ -391,10 +391,6 @@ func (s *Snake) CollidesWithSelf() bool {
 	return false
 }
 
-func (s *Snake) getSize() int {
-	return len(s.Body)
-}
-
 func (s *Snake) Grow() {
 	if len(s.Body) == 0 {
 		return
@@ -453,7 +449,7 @@ func main() {
 	}
 	defer sdl.Quit()
 
-	window, err := sdl.CreateWindow("Snek", sdl.WINDOWPOS_UNDEFINED, sdl.WINDOWPOS_UNDEFINED, windowWidth, windowHeight, sdl.WINDOW_SHOWN)
+	window, err := sdl.CreateWindow("GO-Snek", sdl.WINDOWPOS_UNDEFINED, sdl.WINDOWPOS_UNDEFINED, windowWidth, windowHeight, sdl.WINDOW_SHOWN)
 	if err != nil {
 		panic(err)
 	}
@@ -555,14 +551,9 @@ func main() {
 					case sdl.K_ESCAPE:
 						pause = false
 						death = true
-					case sdl.K_r:
-						foodNum++
-						Snake.Grow()
 					case sdl.K_p:
 						pause = true
 					}
-				} else if e.Type == sdl.KEYUP {
-					// Handle key release if necessary
 				}
 			}
 		}
@@ -570,13 +561,9 @@ func main() {
 		renderer.SetDrawColor(0, 0, 0, 255)
 		renderer.Clear()
 
-		// Define constants for the root function
-		const a float64 = 0
-		const b float64 = 1
-
 		// Inside your game loop
 		// Calculate the dynamic speed based on the snake's size
-		dynamicSpeed := 49 - math.Pow(float64(foodNum), 1/3)*10
+		dynamicSpeed := 49 - math.Pow(float64(foodNum), 1.0/3.0)*10
 
 		// Ensure dynamicSpeed does not fall below a minimum threshold
 		if dynamicSpeed < 11 {

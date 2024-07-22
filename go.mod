@@ -1,4 +1,4 @@
-module test
+module go-snek
 
 go 1.22.5
 

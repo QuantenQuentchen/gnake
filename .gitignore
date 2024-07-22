@@ -1,4 +1,3 @@
 main
 go.sum
-snek.exe
-test.exe
+go-snek.exe
