@@ -271,9 +271,89 @@ func setPixel(x, y int, c sdl.Color, pixels []byte) {
 	}
 }
 
+type advRect struct {
+	p1, p2 Vec2I
+	rot    float64
+	cen    Vec2I
+}
+
+func (r *advRect) Center() Vec2I {
+	centerX := (r.p1.x + r.p2.x) / 2
+	centerY := (r.p1.y + r.p2.y) / 2
+	return Vec2I{centerX, centerY}
+}
+
+// RotatePoint rotates a point around a center by an angle (in degrees)
+func (point Vec2F) RotatePoint(center Vec2F, angle float64) Vec2F {
+	rad := angle * (math.Pi / 180)
+	translated := point.Sub(center)
+
+	rotated := Vec2F{
+		x: translated.x*math.Cos(rad) - translated.y*math.Sin(rad),
+		y: translated.x*math.Sin(rad) + translated.y*math.Cos(rad),
+	}
+
+	return rotated.Add(center)
+}
+
+func (r *advRect) Set(p1, p2 Vec2I) {
+	r.p1 = p1
+	r.p2 = p2
+	r.cen = r.Center()
+}
+
+func (r *advRect) SetWH(x1, y1, w, h int32) {
+	r.p1 = Vec2I{x1, y1}
+	r.p2 = r.p1.Add(Vec2I{w, h})
+	r.cen = r.Center()
+}
+
+func (r *advRect) Rotate() {
+	r.p1 = r.p1.ToVec2F().RotatePoint(r.cen.ToVec2F(), r.rot).ToVec2I()
+	r.p2 = r.p2.ToVec2F().RotatePoint(r.cen.ToVec2F(), r.rot).ToVec2I()
+}
+
+func (r *advRect) GetSdlRect() sdl.Rect {
+	r.Rotate()
+	return sdl.Rect{X: r.p1.x, Y: r.p1.y, W: r.p2.x - r.p1.x, H: r.p2.y - r.p1.y}
+}
+
 type Vec2I struct {
 	x int32
 	y int32
+}
+
+type Vec2F struct {
+	x, y float64
+}
+
+type SnekBody struct {
+	rot    float64
+	pos    Vec2I
+	secRot float64
+	dir    Vec2I
+}
+
+func (v *SnekBody) Scale(scalar int32) SnekBody {
+	return SnekBody{v.rot, v.pos.Scale(scalar), -1, Vec2I{0, 0}}
+}
+
+func (v Vec2F) Add(other Vec2F) Vec2F {
+	return Vec2F{v.x + other.x, v.y + other.y}
+}
+
+func (v Vec2F) Sub(other Vec2F) Vec2F {
+	return Vec2F{v.x - other.x, v.y - other.y}
+}
+
+// Convert Vec2I to Vec2F for precise calculations
+func (v Vec2I) ToVec2F() Vec2F {
+	return Vec2F{x: float64(v.x), y: float64(v.y)}
+}
+
+// Convert Vec2F back to Vec2I, rounding to the nearest integer
+func (v Vec2F) ToVec2I() Vec2I {
+	return Vec2I{x: int32(math.Round(v.x)), y: int32(math.Round(v.y))}
 }
 
 // Add adds another Vec2I to this one and returns the result.
@@ -318,27 +398,86 @@ func ExponentialDecay(x float64) float64 {
 }
 
 type Snake struct {
-	Body             []Vec2I
+	Body             []SnekBody
 	currentThickness float32
 }
 
 func (s *Snake) getRects() []sdl.Rect {
 	var rects []sdl.Rect
 	for _, rect := range s.Body {
-		/*
-			prevOrientation, nextOrientation := Vec2I{0, 0}, Vec2I{0, 0}
-			if idx != 0 {
-				prevOrientation = s.Body[idx-1].Subtract(rect)
-			}
-			if idx != len(s.Body)-1 {
-				nextOrientation = s.Body[idx+1].Subtract(rect)
-			}
-		*/
-		prevPos := rect.Scale(snakeSize)
-		firstRec := sdl.Rect{X: prevPos.x, Y: prevPos.y, W: snakeSize, H: snakeSize}
-		rects = append(rects, firstRec)
+		//fmt.Println(rect.secRot)
+		rects = append(rects, getRotated(s.currentThickness, rect)...)
 	}
 	return rects
+}
+
+func getRotated(currentThickness float32, sb SnekBody) []sdl.Rect {
+	pos := sb.pos
+	ang1 := sb.rot
+	ang2 := sb.secRot
+	thick := int32(snakeSize * currentThickness)
+	missingThick := (snakeSize - thick) / 2
+
+	rotated := advRect{}
+	rotated.SetWH((pos.x*snakeSize)+int32(missingThick), pos.y*snakeSize, thick, snakeSize)
+
+	if ang2 != -1 && currentThickness != 1 {
+		//fmt.Println("ang1: ", ang1, " ang2: ", ang2)
+		//fmt.Println("rotating2")
+		rotated1 := advRect{}
+		rotated1.SetWH((pos.x*snakeSize)+int32(missingThick)-1, pos.y*snakeSize, thick, snakeSize-missingThick)
+		//rotated1.cen = rotated.Center()
+
+		rotated2 := advRect{}
+		rotated2.SetWH((pos.x*snakeSize)+int32(missingThick), pos.y*snakeSize, thick, missingThick+1)
+		//rotated2.cen = rotated.Center()
+		fmt.Println(rotated1.GetSdlRect(), rotated2.GetSdlRect())
+		//180
+		//90
+		//270 = 0,1
+		//0
+		//whackyAdd := Vec2I{0, 0}
+		switch ang1 {
+		case 0:
+			rotated1.cen = rotated.cen.Add(Vec2I{-1, 0})
+		case 90:
+			rotated1.cen = rotated.cen.Add(Vec2I{0, -1})
+		case 180:
+			rotated1.cen = rotated.cen.Add(Vec2I{1, 0})
+		case 270:
+			//whackyAdd = Vec2I{0, 1}
+		case 360:
+			rotated1.cen = rotated.cen.Add(Vec2I{-1, 0})
+		}
+		rotated1.cen = rotated.cen //.Add(Vec2I{0, 1})
+		rotated2.cen = rotated.cen
+		fmt.Println(ang1 + 180)
+		rotated1.rot = float64(int32(ang1+180) % 360)
+		rotated2.rot = ang2
+		//fmt.Println(rotated1.GetSdlRect(), rotated2.GetSdlRect())
+		return []sdl.Rect{rotated1.GetSdlRect(), rotated2.GetSdlRect()}
+	}
+
+	rotated.rot = ang1
+	//fmt.Println(rotated.GetSdlRect())
+	return []sdl.Rect{rotated.GetSdlRect()}
+}
+
+func calculateAngleWithUp(vec Vec2F) float64 {
+	upVec := Vec2F{0, -1} // Up vector
+	dotProduct := vec.x*upVec.x + vec.y*upVec.y
+	magnitudeVec := math.Sqrt(vec.x*vec.x + vec.y*vec.y)
+	magnitudeUpVec := math.Sqrt(upVec.x*upVec.x + upVec.y*upVec.y)
+	angleRadians := math.Acos(dotProduct / (magnitudeVec * magnitudeUpVec))
+
+	// Adjust for 360 degrees
+	if vec.x < 0 {
+		angleRadians = 2*math.Pi - angleRadians
+	}
+
+	angleDegrees := angleRadians * (180 / math.Pi)
+	fmt.Println(angleDegrees)
+	return angleDegrees
 }
 
 func (s *Snake) Move(dir Vec2I) {
@@ -348,8 +487,8 @@ func (s *Snake) Move(dir Vec2I) {
 
 	// Move the head
 	head := s.Body[0]
-	var newX = head.x + int32(dir.x)
-	var newY = head.y + int32(dir.y)
+	var newX = head.pos.x + int32(dir.x)
+	var newY = head.pos.y + int32(dir.y)
 	if newX*snakeSize < 0 {
 		newX = int32((windowWidth - snakeSize) / snakeSize)
 	} else if newX*snakeSize >= int32(windowWidth) {
@@ -360,13 +499,18 @@ func (s *Snake) Move(dir Vec2I) {
 	} else if newY*snakeSize >= int32(windowHeight) {
 		newY = 0
 	}
-	newHead := Vec2I{newX, newY}
-	s.Body = append([]Vec2I{newHead}, s.Body[:len(s.Body)-1]...)
+	rot := calculateAngleWithUp(Vec2F{float64(dir.x), float64(dir.y)})
+	if head.rot != rot {
+		fmt.Println("rotating")
+		s.Body[0].secRot = rot
+	}
+	newHead := SnekBody{rot, Vec2I{newX, newY}, -1, dir}
+	s.Body = append([]SnekBody{newHead}, s.Body[:len(s.Body)-1]...)
 }
 
 func (s *Snake) CollidesWith(rect sdl.Rect) bool {
 	head := s.Body[0]
-	if head.x <= rect.X+rect.W && head.x+snakeSize >= rect.X && head.y <= rect.Y+rect.H && head.y+snakeSize >= rect.Y {
+	if head.pos.x <= rect.X+rect.W && head.pos.x+snakeSize >= rect.X && head.pos.y <= rect.Y+rect.H && head.pos.y+snakeSize >= rect.Y {
 		return true
 	}
 	return false
@@ -375,7 +519,7 @@ func (s *Snake) CollidesWith(rect sdl.Rect) bool {
 func (s *Snake) CollidesWithGlobSpace(rect sdl.Rect) bool {
 	head := s.Body[0]
 	head = head.Scale(snakeSize)
-	if head.x <= rect.X+rect.W && head.x+snakeSize >= rect.X && head.y <= rect.Y+rect.H && head.y+snakeSize >= rect.Y {
+	if head.pos.x <= rect.X+rect.W && head.pos.x+snakeSize >= rect.X && head.pos.y <= rect.Y+rect.H && head.pos.y+snakeSize >= rect.Y {
 		return true
 	}
 	return false
@@ -384,7 +528,7 @@ func (s *Snake) CollidesWithGlobSpace(rect sdl.Rect) bool {
 func (s *Snake) CollidesWithSelf() bool {
 	head := s.Body[0]
 	for i := 1; i < len(s.Body); i++ {
-		if head.x == s.Body[i].x && head.y == s.Body[i].y {
+		if head.pos.x == s.Body[i].pos.x && head.pos.y == s.Body[i].pos.y {
 			return true
 		}
 	}
@@ -397,8 +541,11 @@ func (s *Snake) Grow() {
 	}
 
 	// Grow the snake
+	if s.currentThickness > 0.3 {
+		s.currentThickness -= .05
+	}
 	tail := s.Body[len(s.Body)-1]
-	newTail := Vec2I{x: tail.x, y: tail.y}
+	newTail := SnekBody{tail.rot, tail.pos, -1, tail.dir}
 	s.Body = append(s.Body, newTail)
 }
 
@@ -480,7 +627,7 @@ func main() {
 	renderer.Present()
 
 	running := true
-	Snake := Snake{Body: []Vec2I{{x: 0, y: 0}}, currentThickness: 1}
+	Snake := Snake{Body: []SnekBody{{0.0, Vec2I{x: 0, y: 0}, -1, Vec2I{-3, -3}}}, currentThickness: 1}
 	//var moveSpeed float64 = 0.1
 	var moveDir Vec2I = Vec2I{0, 0}
 	var count = 0
@@ -491,6 +638,9 @@ func main() {
 	pause := true
 	deathcounter := 0
 	funCounter := 0
+	test := advRect{}
+	test.SetWH(400, 400, 50, 10)
+	testC := 0.0
 	for running {
 		// Handle events
 		for event := sdl.PollEvent(); event != nil; event = sdl.PollEvent() {
@@ -584,6 +734,7 @@ func main() {
 				foodNum++
 				food = getRandomFood(&Snake)
 			}
+			test.rot = testC + 90
 		}
 		if !pause && !death {
 			count++
@@ -596,6 +747,8 @@ func main() {
 			renderer.FillRect(&food)
 			renderer.SetDrawColor(255, 255, 255, 255)
 			renderer.FillRect(&rect)
+			rec := test.GetSdlRect()
+			renderer.FillRect(&rec)
 		}
 		DrawNumber(renderer, foodNum*10, 750, 30, sdl.Color{R: 255, G: 0, B: 0, A: 128})
 		texture.Update(nil, unsafe.Pointer(&pixels[0]), windowWidth*4)
